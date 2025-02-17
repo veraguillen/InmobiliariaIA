@@ -1,6 +1,11 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+from colorama import init
 
+# Inicializar colorama
+init()
+
+# Inicializar FastAPI
 app = FastAPI()
 
 @app.get("/")
@@ -12,9 +17,6 @@ class ZPIDRequest(BaseModel):
 
 @app.get("/property_details/{zpid}")
 def get_property_details(zpid: str):
-    from colorama import init
-    init()  
-
     from api_client import APIClient
     import config
     from utils import print_color, extract_address_from_description
@@ -49,95 +51,52 @@ def get_property_details(zpid: str):
 
     def print_property_details(data, zpid, client):
         if not data:
-            print_color("No se encontraron datos de la propiedad.", color="red", bold=True)
-            return
+            return {"message": "No se encontraron datos de la propiedad."}
 
-        print_color("=== Detalles de la Propiedad ===", color="green", bold=True)
-        
-        address = data.get('address', {})
-        street_address = address.get('streetAddress')
-        city = address.get('city')
-        state = address.get('state')
-        zipcode = address.get('zipcode')
-        
-        if not all([street_address, city, state, zipcode]):
-            description = data.get('description', '')
-            street_address, city, state, zipcode = extract_address_from_description(description)
-        
-        print_color(f"Dirección: {street_address or 'No se encontró dato'}", color="cyan")
-        print_color(f"Ciudad: {city or 'No se encontró dato'}", color="cyan")
-        print_color(f"Estado: {state or 'No se encontró dato'}", color="cyan")
-        print_color(f"Código Postal: {zipcode or 'No se encontró dato'}", color="cyan")
-        
-        if zipcode == 'No se encontró dato':
-            print_color("Advertencia: El código postal no es válido. Los detalles de la propiedad pueden estar incompletos.", color="red")
-        
-        price = format_number(data.get('price'))
-        zestimate = format_number(data.get('zestimate'))
-        print_color(f"Precio: ${price:,}", color="yellow", bold=True)
-        print_color(f"Zestimate: ${zestimate:,}", color="yellow", bold=True)
-        
-        description = format_description(data.get('description', 'No se encontró dato'))
-        print_color(f"Descripción:\n{description}", color="white")
-        
-        formatted_chip = data.get('formattedChip', {})
-        
-        bathrooms = format_number(data.get('bathrooms'))
-        if bathrooms == 'No se encontró dato':
-            bathrooms = get_formatted_chip_value(formatted_chip, 'baths')
-        print_color(f"Baños: {bathrooms}", color="magenta")
-        
-        bedrooms = format_number(data.get('bedrooms'))
-        if bedrooms == 'No se encontró dato':
-            bedrooms = get_formatted_chip_value(formatted_chip, 'beds')
-        print_color(f"Habitaciones: {bedrooms}", color="magenta")
-        
-        living_area = format_number(data.get('livingAreaValue'))
-        if living_area == 'No se encontró dato':
-            living_area = get_formatted_chip_value(formatted_chip, 'livingArea')
-        print_color(f"Área: {living_area} sqft", color="magenta")
-        
-        reso_facts = data.get('resoFacts', {})
-        print_color(f"Tipo de propiedad: {reso_facts.get('homeType', 'No se encontró dato')}", color="magenta")
-        print_color(f"Año de construcción: {reso_facts.get('yearBuilt', 'No se encontró dato')}", color="magenta")
-        print_color(f"Tamaño del lote: {reso_facts.get('lotSize', 'No se encontró dato')}", color="magenta")
-        print_color(f"Calefacción: {', '.join(reso_facts.get('heating', ['No se encontró dato']))}", color="magenta")
-        print_color(f"Refrigeración: {', '.join(reso_facts.get('cooling', ['No se encontró dato']))}", color="magenta")
-        print_color(f"Pisos: {', '.join(reso_facts.get('flooring', ['No se encontró dato']))}", color="magenta")
-        
+        details = {
+            "Dirección": data.get('address', {}).get('streetAddress', 'No se encontró dato'),
+            "Ciudad": data.get('address', {}).get('city', 'No se encontró dato'),
+            "Estado": data.get('address', {}).get('state', 'No se encontró dato'),
+            "Código Postal": data.get('address', {}).get('zipcode', 'No se encontró dato'),
+            "Precio": format_number(data.get('price')),
+            "Zestimate": format_number(data.get('zestimate')),
+            "Descripción": format_description(data.get('description', 'No se encontró dato')),
+            "Baños": format_number(data.get('bathrooms')),
+            "Habitaciones": format_number(data.get('bedrooms')),
+            "Área": format_number(data.get('livingAreaValue')),
+            "Tipo de propiedad": data.get('resoFacts', {}).get('homeType', 'No se encontró dato'),
+            "Año de construcción": data.get('resoFacts', {}).get('yearBuilt', 'No se encontró dato'),
+            "Tamaño del lote": data.get('resoFacts', {}).get('lotSize', 'No se encontró dato'),
+            "Calefacción": ', '.join(data.get('resoFacts', {}).get('heating', ['No se encontró dato'])),
+            "Refrigeración": ', '.join(data.get('resoFacts', {}).get('cooling', ['No se encontró dato'])),
+            "Pisos": ', '.join(data.get('resoFacts', {}).get('flooring', ['No se encontró dato'])),
+        }
+
+        # Obtener datos del clima
+        city = details["Ciudad"]
         if city:
             weather_data = client.get_weather(city)
             if weather_data:
-                temperature = weather_data.get('main', {}).get('temp')
-                weather_description = weather_data.get('weather', [{}])[0].get('description')
-                print_color(f"Clima en {city}: {weather_description}, Temperatura: {temperature}°C", color="cyan", bold=True)
+                details["Clima"] = {
+                    "Descripción": weather_data.get('weather', [{}])[0].get('description'),
+                    "Temperatura": weather_data.get('main', {}).get('temp')
+                }
         
         latitude = data.get('latitude')
         longitude = data.get('longitude')
         if latitude and longitude:
-            print_color(f"Coordenadas: Latitud={latitude}, Longitud={longitude}", color="cyan")
-            
-            print_color("=== Lugares Cercanos ===", color="green", bold=True)
-            
-            schools = client.get_nearby_places(latitude, longitude, place_type="school")
-            if schools and schools.get('results'):
-                print_color("Escuelas cercanas:", color="magenta")
-                for school in schools.get('results', [])[:3]:
-                    print_color(f"- {school.get('name')}", color="magenta")
-            
-            hospitals = client.get_nearby_places(latitude, longitude, place_type="hospital")
-            if hospitals and hospitals.get('results'):
-                print_color("Hospitales cercanos:", color="magenta")
-                for hospital in hospitals.get('results', [])[:3]:
-                    print_color(f"- {hospital.get('name')}", color="magenta")
-            
-            stores = client.get_nearby_places(latitude, longitude, place_type="store")
-            if stores and stores.get('results'):
-                print_color("Tiendas cercanas:", color="magenta")
-                for store in stores.get('results', [])[:3]:
-                    print_color(f"- {store.get('name')}", color="magenta")
+            details["Coordenadas"] = f"Latitud={latitude}, Longitud={longitude}"
+
+            # Obtener lugares cercanos
+            details["Lugares cercanos"] = {
+                "Escuelas": [school.get('name') for school in client.get_nearby_places(latitude, longitude, place_type="school").get('results', [])[:3]],
+                "Hospitales": [hospital.get('name') for hospital in client.get_nearby_places(latitude, longitude, place_type="hospital").get('results', [])[:3]],
+                "Tiendas": [store.get('name') for store in client.get_nearby_places(latitude, longitude, place_type="store").get('results', [])[:3]],
+            }
         else:
-            print_color("No se encontraron coordenadas en los detalles de la propiedad.", color="red")
+            details["Coordenadas"] = "No se encontraron coordenadas en los detalles de la propiedad."
+
+        return details
 
     client = APIClient(
         base_url=config.API_BASE_URL,
@@ -148,11 +107,11 @@ def get_property_details(zpid: str):
     property_details = client.get_property_details(zpid)
     if property_details and property_details.get('status'):
         data = property_details.get('data', {})
-        print_property_details(data, zpid, client)
+        return print_property_details(data, zpid, client)
     else:
         return {"message": "No se pudieron obtener los detalles de la propiedad"}
 
+# Ejecutar la aplicación con uvicorn
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
