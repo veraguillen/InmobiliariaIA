@@ -1,0 +1,11 @@
+# Entorno virtual
+inmobiliariaIA/
+
+# Archivos de configuración específicos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos de compilación
+__pycache__/
+*.py[cod]
+
